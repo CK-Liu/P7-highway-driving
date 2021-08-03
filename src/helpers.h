@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string>
 #include <vector>
+#include "spline.h"
 
 // for convenience
 using std::string;
