@@ -13,6 +13,8 @@
 using nlohmann::json;
 using std::string;
 using std::vector;
+using namespace std;
+//using std::endl;
 
 int main() {
   uWS::Hub h;
@@ -94,35 +96,47 @@ int main() {
           
           int prev_size = previous_path_x.size();
           
-          if (prev_size  > 2) {
+          if (prev_size  > 0) {
            	car_s = end_path_s; 
           }
           
-          bool too_close = false;
+          bool too_close_ahead = false;
+          bool LCR = (lane < 2);
+          bool LCL = (lane > 0);
           
           for (int i=0; i<sensor_fusion.size(); i++) {
-           	float d = sensor_fusion[i][6]; 
-            if (d<(2+4*lane+2) && d>(2+4*lane-2)) {
-              double vx = sensor_fusion[i][3];
-              double vy = sensor_fusion[i][4];
-              double check_speed = sqrt(vx*vx+vy*vy);
-              double check_car_s = sensor_fusion[i][5];
-              
-              check_car_s += ((double)prev_size*0.02*check_speed);
-              
-              if ((check_car_s > car_s) && ((check_car_s-car_s) < 30)) {
-                //ref_vel = 29.5;
-                too_close = true;
-                // lower reference speed, prepare to change lanes
-                if (lane > 0) {
-                  lane = 0;
-                }
-              }            
-            }
+           	float d = sensor_fusion[i][6];
+            int car_lane = floor(d/4.0);
+            double vx = sensor_fusion[i][3];
+            double vy = sensor_fusion[i][4];
+            double check_speed = sqrt(vx*vx+vy*vy);
+            double check_car_s = sensor_fusion[i][5];
+
+            check_car_s += ((double)prev_size*0.02*check_speed);
+            bool car_ahead = (check_car_s > car_s);
+            bool too_close = (((check_car_s-car_s)<30) and car_ahead) or (check_car_s-car_s<-10);
+           // bool too_close = ((check_car_s-car_s)<30) and car_ahead;
+
+            if (too_close) {
+              //ref_vel = 29.5;
+              if (car_lane == lane && car_ahead) {
+                too_close_ahead = true;
+              } else if (car_lane == lane-1) {
+                LCL = false;
+              } else if (car_lane == lane+1) {
+                LCR = false;
+              }
+            }            
           }
           
-          if (too_close) {
+          if (too_close_ahead) {
             ref_vel -= 0.224;
+            if (LCL == true) {
+              lane -= 1;
+              cout << "Changing to left lane" << std::endl;
+            } else if (LCR == true) {
+              lane += 1;
+            }
           } else if (ref_vel < 49.5) {
             ref_vel += 0.224;
           }
@@ -135,7 +149,7 @@ int main() {
           double ref_yaw = deg2rad(car_yaw);
           
           if (prev_size < 2) {
-            double prev_car_x = car_x - cos(car_yaw);
+            double prev_car_x = car_x - cos(car_yaw); //1m apart
             double prev_car_y = car_y - sin(car_yaw);
             
             ptsx.push_back(prev_car_x);
@@ -149,6 +163,13 @@ int main() {
             
             double ref_x_prev = previous_path_x[prev_size-2];
             double ref_y_prev = previous_path_y[prev_size-2];
+            ref_yaw = atan2(ref_y-ref_y_prev,ref_x-ref_x_prev);
+            
+            ptsx.push_back(ref_x_prev);
+            ptsx.push_back(ref_x);
+            
+            ptsy.push_back(ref_y_prev);
+            ptsy.push_back(ref_y);
           }
           
           vector<double> next_wp0 = getXY(car_s+30,(2+4*lane),map_waypoints_s,map_waypoints_x,map_waypoints_y);
